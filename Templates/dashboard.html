@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Smart Food Expiry Detector</title>
+  <!-- Google Fonts: Syne (headings) + DM Sans (body) -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@600;700;800&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}" />
+</head>
+<body>
+
+  <!-- ═══════════════════════════════════════════════════
+       HEADER
+  ══════════════════════════════════════════════════════ -->
+  <header class="site-header">
+    <div class="header-inner">
+      <div class="header-brand">
+        <span class="brand-icon">🥦</span>
+        <div>
+          <h1 class="brand-title">Smart Food Expiry Detector</h1>
+          <p class="brand-sub">Food Waste Reduction System</p>
+        </div>
+      </div>
+      <nav class="header-nav">
+        <a href="{{ url_for('dashboard') }}" class="nav-link active">Dashboard</a>
+        <a href="{{ url_for('report') }}" class="nav-link">Report</a>
+      </nav>
+    </div>
+  </header>
+
+  <main class="main-content">
+
+    <!-- ══════════════════════════════════════════════════
+         SUMMARY STATS BAR
+    ═══════════════════════════════════════════════════ -->
+    <section class="stats-bar">
+      <div class="stat-card">
+        <span class="stat-num">{{ total }}</span>
+        <span class="stat-label">Total Items</span>
+      </div>
+      <div class="stat-card fresh">
+        <span class="stat-num">{{ fresh }}</span>
+        <span class="stat-label">🟢 Fresh</span>
+      </div>
+      <div class="stat-card expiring">
+        <span class="stat-num">{{ expiring }}</span>
+        <span class="stat-label">🟡 Expiring Soon</span>
+      </div>
+      <div class="stat-card expired">
+        <span class="stat-num">{{ expired }}</span>
+        <span class="stat-label">🔴 Expired</span>
+      </div>
+      <div class="stat-card waste">
+        <span class="stat-num">{{ waste_pct }}%</span>
+        <span class="stat-label">Waste Rate</span>
+      </div>
+    </section>
+
+    <!-- ══════════════════════════════════════════════════
+         TWO-COLUMN LAYOUT: FORM  +  CHART
+    ═══════════════════════════════════════════════════ -->
+    <div class="two-col">
+
+      <!-- ── ADD FOOD FORM ─────────────────────────── -->
+      <section class="card form-card">
+        <h2 class="card-title">➕ Add Food Item</h2>
+        <form action="{{ url_for('add_item') }}" method="POST" id="addForm">
+
+          <div class="form-group">
+            <label for="food_name">Food Name</label>
+            <input
+              type="text"
+              id="food_name"
+              name="food_name"
+              placeholder="e.g. Milk, Spinach, Chicken…"
+              required
+            />
+          </div>
+
+          <div class="form-group">
+            <label for="purchase_date">Purchase Date</label>
+            <input
+              type="date"
+              id="purchase_date"
+              name="purchase_date"
+              max="{{ today }}"
+              required
+            />
+          </div>
+
+          <div class="form-group">
+            <label for="shelf_life">Shelf Life (days)</label>
+            <input
+              type="number"
+              id="shelf_life"
+              name="shelf_life"
+              min="1"
+              max="3650"
+              placeholder="e.g. 7"
+              required
+            />
+          </div>
+
+          <!-- Live expiry preview (calculated by JS) -->
+          <div class="expiry-preview" id="expiryPreview" style="display:none;">
+            📅 Calculated Expiry Date: <strong id="expiryDateDisplay"></strong>
+          </div>
+
+          <button type="submit" class="btn-primary">Add Item</button>
+        </form>
+      </section>
+
+      <!-- ── CHART ──────────────────────────────────── -->
+      <section class="card chart-card">
+        <h2 class="card-title">📊 Status Distribution</h2>
+        {% if chart_b64 %}
+          <img
+            src="data:image/png;base64,{{ chart_b64 }}"
+            alt="Food Status Distribution Chart"
+            class="chart-img"
+          />
+        {% else %}
+          <p class="no-data">Add some food items to see the chart.</p>
+        {% endif %}
+      </section>
+
+    </div><!-- /.two-col -->
+
+    <!-- ══════════════════════════════════════════════════
+         FOOD ITEMS TABLE
+    ═══════════════════════════════════════════════════ -->
+    <section class="card table-card">
+      <div class="table-header">
+        <h2 class="card-title">🗂️ Food Inventory</h2>
+        <span class="table-count">{{ total }} item{{ 's' if total != 1 else '' }}</span>
+      </div>
+
+      {% if items %}
+      <div class="table-wrapper">
+        <table class="food-table">
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Food Name</th>
+              <th>Purchase Date</th>
+              <th>Shelf Life</th>
+              <th>Expiry Date</th>
+              <th>Days Remaining</th>
+              <th>Status</th>
+              <th>Action</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for item in items %}
+            <tr class="{{ item.row_class }}">
+              <td class="col-id">{{ item.id }}</td>
+              <td class="col-name">{{ item.food_name }}</td>
+              <td>{{ item.purchase_date }}</td>
+              <td>{{ item.shelf_life }}d</td>
+              <td>{{ item.expiry_date }}</td>
+              <td class="col-days">
+                {% if item.days_remaining < 0 %}
+                  <span class="days-neg">{{ item.days_remaining }}d</span>
+                {% else %}
+                  <span class="days-pos">{{ item.days_remaining }}d</span>
+                {% endif %}
+              </td>
+              <td>
+                <span class="badge {{ item.badge_class }}">{{ item.status }}</span>
+              </td>
+              <td>
+                <a
+                  href="{{ url_for('delete_item', item_id=item.id) }}"
+                  class="btn-delete"
+                  onclick="return confirm('Delete {{ item.food_name }}?')"
+                  title="Delete this item"
+                >🗑 Delete</a>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+      <div class="empty-state">
+        <span class="empty-icon">🛒</span>
+        <p>No food items yet. Add your first item using the form above!</p>
+      </div>
+      {% endif %}
+    </section>
+
+    <!-- ══════════════════════════════════════════════════
+         WASTE REPORT SECTION
+    ═══════════════════════════════════════════════════ -->
+    <section class="card report-card">
+      <h2 class="card-title">📋 Food Waste Report</h2>
+      <div class="report-grid">
+        <div class="report-item">
+          <span class="report-label">Total Items Tracked</span>
+          <span class="report-value">{{ total }}</span>
+        </div>
+        <div class="report-item">
+          <span class="report-label">Fresh Items</span>
+          <span class="report-value fresh-text">{{ fresh }}</span>
+        </div>
+        <div class="report-item">
+          <span class="report-label">Expiring Soon</span>
+          <span class="report-value expiring-text">{{ expiring }}</span>
+        </div>
+        <div class="report-item">
+          <span class="report-label">Expired Items</span>
+          <span class="report-value expired-text">{{ expired }}</span>
+        </div>
+        <div class="report-item highlight">
+          <span class="report-label">⚠️ Waste Percentage</span>
+          <span class="report-value">{{ waste_pct }}%</span>
+          <span class="report-formula">(expired / total) × 100</span>
+        </div>
+      </div>
+
+      {% if waste_pct == 0 and total > 0 %}
+        <p class="waste-msg good">✅ Great job! No food waste detected.</p>
+      {% elif waste_pct > 0 and waste_pct <= 20 %}
+        <p class="waste-msg ok">⚠️ Low waste. Keep an eye on expiring items.</p>
+      {% elif waste_pct > 20 %}
+        <p class="waste-msg bad">🚨 High waste rate! Use or remove expired items.</p>
+      {% endif %}
+
+      <a href="{{ url_for('report') }}" class="btn-secondary">View Full Report →</a>
+    </section>
+
+  </main>
+
+  <footer class="site-footer">
+    <p>Smart Food Expiry Detector &nbsp;|&nbsp; Built with Python &amp; Flask &nbsp;|&nbsp; Reducing Food Waste 🌱</p>
+  </footer>
+
+  <script src="{{ url_for('static', filename='js/main.js') }}"></script>
+</body>
+</html>
